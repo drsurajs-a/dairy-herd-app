@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dairy Manager Pro v3</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        :root { --primary: #0f766e; --bg: #f0fdfa; --accent: #14b8a6; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); margin: 0; padding: 20px; color: #134e4a; }
+        
+        .card { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin: 0 auto; max-width: 800px; }
+        .hidden { display: none; }
+        
+        /* Inputs & Buttons */
+        input, select, textarea { width: 100%; padding: 10px; margin: 6px 0; border: 1px solid #ccfbf1; border-radius: 6px; box-sizing: border-box; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        
+        button { padding: 10px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; transition: 0.2s; width: 100%; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-danger { background: #fee2e2; color: #dc2626; width: auto; padding: 6px 12px; font-size: 0.9em; }
+        .btn-outline { background: white; border: 1px solid var(--primary); color: var(--primary); }
+        
+        /* Navigation */
+        .tabs { display: flex; gap: 5px; margin-bottom: 20px; border-bottom: 2px solid #ccfbf1; overflow-x: auto; }
+        .tab-btn { background: none; color: #6b7280; padding: 12px; border-bottom: 3px solid transparent; white-space: nowrap; }
+        .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: bold; }
+        
+        /* Lists */
+        .item-row { background: #f0fdfa; padding: 12px; margin: 8px 0; border-left: 4px solid var(--primary); border-radius: 4px; }
+        .tag { font-size: 0.75em; padding: 2px 6px; border-radius: 4px; background: #e2e8f0; color: #475569; margin-right: 5px; }
+        .tag-heat { background: #fce7f3; color: #be185d; }
+        .tag-ai { background: #dbeafe; color: #1e40af; }
+    </style>
+</head>
+<body>
+
+    <div id="authContainer" class="card" style="max-width:400px; margin-top:50px;">
+        <h1 style="text-align:center">🐄 Dairy Pro</h1>
+        <div id="loginForm">
+            <input type="email" id="email" placeholder="Email">
+            <input type="password" id="password" placeholder="Password">
+            <button class="btn-primary" onclick="handleLogin()">Log In</button>
+            <p style="text-align:center; font-size:0.9em; margin-top:15px;">
+                <a href="#" onclick="toggleAuth(true)">Create Account</a>
+            </p>
+        </div>
+        <div id="signupForm" class="hidden">
+            <input type="email" id="newEmail" placeholder="New Email">
+            <input type="password" id="newPassword" placeholder="New Password">
+            <button class="btn-primary" onclick="handleSignUp()">Sign Up</button>
+            <p style="text-align:center; margin-top:15px;">
+                <a href="#" onclick="toggleAuth(false)">Back to Login</a>
+            </p>
+        </div>
+    </div>
+
+    <div id="appContainer" class="card hidden">
+        <div style="display:flex; justify-content:space-between; margin-bottom:15px;">
+            <strong id="userEmailDisplay"></strong>
+            <button class="btn-danger" onclick="handleLogout()">Logout</button>
+        </div>
+
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('herd')" id="btn-herd">🐮 Herd</button>
+            <button class="tab-btn" onclick="switchTab('breeding')" id="btn-breeding">🧬 Breeding/AI</button>
+            <button class="tab-btn" onclick="switchTab('record')" id="btn-record">📝 Milk</button>
+            <button class="tab-btn" onclick="switchTab('data')" id="btn-data">📊 History</button>
+        </div>
+
+        <div id="view-herd">
+            <h3>Add Cow / Calf</h3>
+            <div class="grid-2">
+                <input type="text" id="cowName" placeholder="Name">
+                <input type="text" id="cowNumber" placeholder="Tag #">
+                <input type="number" id="cowParity" placeholder="Parity (Lactation #)">
+                <input type="date" id="cowDob" title="Date of Birth">
+            </div>
+            
+            <label style="font-size:0.9em; font-weight:bold; margin-top:10px; display:block;">Mother (Dam) Details:</label>
+            <div class="grid-2">
+                <select id="damSelect">
+                    <option value="">-- Select Mother from Herd --</option>
+                </select>
+                <input type="text" id="damExternal" placeholder="Or Type External Mother ID">
+            </div>
+
+            <input type="text" id="purchaseSource" placeholder="Source (e.g. Born on farm, Purchased from X)">
+            <input type="date" id="calvingDate" title="Last Calving Date">
+            
+            <button class="btn-primary" style="margin-top:10px;" onclick="addCow()">+ Add Cow</button>
+            
+            <h3 style="margin-top:20px;">Active Herd</h3>
+            <div id="cowList">Loading...</div>
+        </div>
+
+        <div id="view-breeding" class="hidden">
+            <h3>Add Breeding Event</h3>
+            <label>Select Cow:</label>
+            <select id="breedCowSelect"></select>
+            
+            <div class="grid-2">
+                <input type="date" id="breedDate">
+                <select id="breedType">
+                    <option value="estrus">🔥 Estrus (Heat)</option>
+                    <option value="ai">💉 AI (Insemination)</option>
+                    <option value="check">chk Pregnancy Check</option>
+                </select>
+            </div>
+            <input type="text" id="breedNotes" placeholder="Notes (e.g. Bull ID, Semen Batch, Signs)">
+            <button class="btn-primary" onclick="addBreeding()">Save Event</button>
+
+            <h3 style="margin-top:20px;">Recent Events</h3>
+            <div id="breedingList">Loading...</div>
+        </div>
+
+        <div id="view-record" class="hidden">
+            <select id="recordCowSelect"></select>
+            <input type="date" id="recDate">
+            <div class="grid-2">
+                <input type="number" id="morning" placeholder="Morning (L)">
+                <input type="number" id="evening" placeholder="Evening (L)">
+                <input type="number" id="fat" placeholder="Fat %">
+                <input type="number" id="snf" placeholder="SNF %">
+            </div>
+            <button class="btn-primary" style="margin-top:10px" onclick="addRecord()">Save Milk Record</button>
+        </div>
+
+        <div id="view-data" class="hidden">
+            <button onclick="loadRecords()" class="btn-outline">🔄 Refresh History</button>
+            <div id="recordList" style="margin-top:10px;">Loading...</div>
+        </div>
+    </div>
+
+    <script>
+        // --- SETUP ---
+        const SUPABASE_URL = 'https://jsckhxvacfyuczeprjmz.supabase.co';
+        const SUPABASE_KEY = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpzY2toeHZhY2Z5dWN6ZXByam16Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY3NTEwMDQsImV4cCI6MjA4MjMyNzAwNH0.JGA20mtDRgfYw4WJh10XiB65FCmw4H7Z4F8Dle32oLs`;
+        let db = null;
+        let currentUser = null;
+        let myCows = [];
+
+        window.onload = function() {
+            if(window.supabase) {
+                db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+                const today = new Date().toISOString().split('T')[0];
+                document.querySelectorAll('input[type="date"]').forEach(el => el.value = today);
+                checkSession();
+            }
+        };
+
+        // --- AUTH ---
+        function toggleAuth(showSignup) {
+            document.getElementById('loginForm').classList.toggle('hidden', showSignup);
+            document.getElementById('signupForm').classList.toggle('hidden', !showSignup);
+        }
+        async function checkSession() {
+            const { data } = await db.auth.getSession();
+            if (data.session) {
+                currentUser = data.session.user;
+                document.getElementById('userEmailDisplay').textContent = currentUser.email;
+                document.getElementById('authContainer').classList.add('hidden');
+                document.getElementById('appContainer').classList.remove('hidden');
+                loadCows();
+            }
+        }
+        async function handleLogin() {
+            const email = document.getElementById('email').value;
+            const pass = document.getElementById('password').value;
+            const { error } = await db.auth.signInWithPassword({ email, password: pass });
+            if(error) alert(error.message); else checkSession();
+        }
+        async function handleSignUp() {
+            const email = document.getElementById('newEmail').value;
+            const pass = document.getElementById('newPassword').value;
+            const { error } = await db.auth.signUp({ email, password: pass });
+            if(error) alert(error.message); else { alert("Account created!"); checkSession(); }
+        }
+        async function handleLogout() { await db.auth.signOut(); location.reload(); }
+
+        // --- CORE FEATURES ---
+
+        // 1. ADD COW (With Mother & Age)
+        async function addCow() {
+            const name = document.getElementById('cowName').value;
+            const number = document.getElementById('cowNumber').value;
+            
+            // Logic: Mother can be Internal (ID) or External (Text)
+            const damId = document.getElementById('damSelect').value || null;
+            const damExt = document.getElementById('damExternal').value || null;
+
+            if(!name) return alert("Name is required");
+
+            const { error } = await db.from('cows').insert([{
+                user_id: currentUser.id,
+                name: name,
+                number: number,
+                parity: document.getElementById('cowParity').value,
+                dob: document.getElementById('cowDob').value, // New: Age
+                dam_id: damId,    // New: Link to mother
+                dam_external: damExt, // New: External mother
+                purchase_source: document.getElementById('purchaseSource').value,
+                calving_date: document.getElementById('calvingDate').value,
+                status: 'active'
+            }]);
+
+            if(error) alert(error.message); else { alert("Cow Added!"); loadCows(); }
+        }
+
+        // 2. LOAD COWS (Calculates Age & Shows Mother)
+        async function loadCows() {
+            // Fetch Cows AND their Mother's Name (self-join)
+            const { data, error } = await db.from('cows')
+                .select(`*, mother:dam_id(name, number)`)
+                .eq('status', 'active')
+                .order('created_at', {ascending:false});
+
+            myCows = data || [];
+            
+            if(data) {
+                const list = document.getElementById('cowList');
+                list.innerHTML = data.map(c => {
+                    const age = calculateAge(c.dob);
+                    const motherInfo = c.mother ? `Mother: ${c.mother.name}` : (c.dam_external ? `Mother: ${c.dam_external}` : '');
+                    const dryBtn = c.dry_date ? `<span class="tag">Dried: ${c.dry_date}</span>` : `<button class="btn-danger" onclick="dryOff('${c.id}')">Dry Off</button>`;
+                    
+                    return `
+                    <div class="item-row">
+                        <div style="display:flex; justify-content:space-between;">
+                            <strong>${c.name} (#${c.number})</strong>
+                            <small>${age}</small>
+                        </div>
+                        <div style="font-size:0.85em; color:#666; margin:5px 0;">
+                            ${motherInfo} | Parity: ${c.parity}
+                        </div>
+                        <div style="display:flex; justify-content:space-between; margin-top:5px;">
+                            ${dryBtn}
+                            <button class="btn-outline" style="width:auto; padding:4px 8px;" onclick="sellCow('${c.id}')">Sold</button>
+                        </div>
+                    </div>`;
+                }).join('');
+
+                // Update Dropdowns
+                const options = '<option value="">-- Select --</option>' + 
+                    data.map(c => `<option value="${c.id}">${c.name} (#${c.number})</option>`).join('');
+                document.getElementById('damSelect').innerHTML = options;
+                document.getElementById('recordCowSelect').innerHTML = options;
+                document.getElementById('breedCowSelect').innerHTML = options;
+            }
+        }
+        
+        // Sell Cow
+        async function sellCow(id) {
+            if(confirm("Mark as SOLD?")) {
+                const { error } = await db.from('cows').update({ status: 'sold' }).eq('id', id);
+                if(error) alert(error.message); else loadCows();
+            }
+        }
+
+        // 3. DRY OFF FEATURE
+        async function dryOff(id) {
+            if(confirm("Mark this cow as DRY? (Ends lactation)")) {
+                const today = new Date().toISOString().split('T')[0];
+                const { error } = await db.from('cows').update({ dry_date: today }).eq('id', id);
+                if(error) alert(error.message); else loadCows();
+            }
+        }
+
+        // 4. BREEDING / AI LOGIC
+        async function addBreeding() {
+            const cowId = document.getElementById('breedCowSelect').value;
+            if(!cowId) return alert("Select Cow");
+
+            const { error } = await db.from('breeding').insert([{
+                user_id: currentUser.id,
+                cow_id: cowId,
+                event_date: document.getElementById('breedDate').value,
+                event_type: document.getElementById('breedType').value,
+                notes: document.getElementById('breedNotes').value
+            }]);
+
+            if(error) alert(error.message); else { alert("Event Saved"); loadBreedingEvents(); }
+        }
+
+        async function loadBreedingEvents() {
+            // Fetch breeding events with Cow Name
+            const { data, error } = await db.from('breeding')
+                .select(`*, cows(name, number)`)
+                .order('event_date', {ascending:false}).limit(10);
+                
+            const list = document.getElementById('breedingList');
+            if(data) {
+                list.innerHTML = data.map(e => {
+                    let typeLabel = e.event_type === 'ai' ? '<span class="tag tag-ai">AI</span>' : '<span class="tag tag-heat">Heat</span>';
+                    return `
+                    <div class="item-row">
+                        <div>
+                            ${typeLabel} <strong>${e.cows?.name}</strong> <small>(${e.event_date})</small><br>
+                            <small>${e.notes || ''}</small>
+                        </div>
+                    </div>`;
+                }).join('');
+            }
+        }
+
+        // 5. MILK RECORDING (Standard)
+        async function addRecord() {
+            const cowId = document.getElementById('recordCowSelect').value;
+            const m = parseFloat(document.getElementById('morning').value)||0;
+            const e = parseFloat(document.getElementById('evening').value)||0;
+            
+            const { error } = await db.from('milk_records').insert([{
+                user_id: currentUser.id, cow_id: cowId,
+                date: document.getElementById('recDate').value,
+                morning: m, evening: e, total: m+e,
+                fat: document.getElementById('fat').value, snf: document.getElementById('snf').value
+            }]);
+            if(error) alert(error.message); else { alert("Saved"); switchTab('data'); }
+        }
+        
+        async function loadRecords() {
+            const { data, error } = await db.from('milk_records')
+                .select('*, cows(name, number)')
+                .order('date', {ascending:false}).limit(20);
+
+            const list = document.getElementById('recordList');
+            if(data) {
+                list.innerHTML = data.map(r => `
+                    <div class="item-row">
+                        <div>
+                            <strong>${r.date}</strong> - ${r.cows?.name || '?'}<br>
+                            Total: ${r.total} L
+                        </div>
+                    </div>
+                `).join('');
+            }
+        }
+
+        // UTILS
+        function calculateAge(dob) {
+            if(!dob) return "Age: Unknown";
+            const diff = Date.now() - new Date(dob).getTime();
+            const years = Math.floor(diff / (1000 * 60 * 60 * 24 * 365.25));
+            const months = Math.floor((diff % (1000 * 60 * 60 * 24 * 365.25)) / (1000 * 60 * 60 * 24 * 30));
+            return `${years}y ${months}m`;
+        }
+
+        function switchTab(tab) {
+            ['herd', 'breeding', 'record', 'data'].forEach(t => {
+                document.getElementById('view-'+t).classList.add('hidden');
+                document.getElementById('btn-'+t).classList.remove('active');
+            });
+            document.getElementById('view-'+tab).classList.remove('hidden');
+            document.getElementById('btn-'+tab).classList.add('active');
+            if(tab === 'breeding') loadBreedingEvents();
+            if(tab === 'data') loadRecords();
+        }
+        
+        // Load Breeding history when tab is clicked
+        document.getElementById('btn-breeding').addEventListener('click', loadBreedingEvents);
+    </script>
+</body>
+</html>
